@@ -40,18 +40,30 @@ function TourPackages() {
 		setIsFormOpen(true);
 	};
 
-	const handleSave = (data) => {
-		if (editingPackage?.id) {
-			packageStore.update(editingPackage.id, data);
-		} else {
-			packageStore.create(data);
+	const handleSave = async (data) => {
+		try {
+			if (editingPackage?.id) {
+				await packageStore.update(editingPackage.id, data);
+			} else {
+				await packageStore.create(data);
+			}
+			setIsFormOpen(false);
+			setEditingPackage(null);
+		} catch (error) {
+			console.error('Failed to save package:', error);
+			alert(error?.message || 'Failed to save package. Please check the backend and Cloudinary settings.');
 		}
-		setIsFormOpen(false);
-		setEditingPackage(null);
 	};
 
 	const handleDeleteConfirm = (id) => {
-		packageStore.delete(id);
+		(async () => {
+			try {
+				await packageStore.delete(id);
+			} catch (err) {
+				console.error('Failed to delete package', err);
+				alert(err?.message || 'Failed to delete package');
+			}
+		})();
 		setDeletingPackage(null);
 	};
 
