@@ -38,14 +38,37 @@ const Reviews = () => {
   const { getCustomerBookings } = useBookings();
   const navigate     = useNavigate();
   const [reviews, setReviews]       = useState(loadReviews);
+  const [userBookings, setUserBookings] = useState([]);
   const [serverReviewableTours, setServerReviewableTours] = useState([]);
   const [modalOpen, setModalOpen]   = useState(false);
 
   const isLoggedIn = Boolean(user);
 
-  const userBookings = useMemo(() => {
-    if (!user?.email) return [];
-    return getCustomerBookings(user.email);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUserBookings = async () => {
+      if (!user?.email) {
+        setUserBookings([]);
+        return;
+      }
+
+      try {
+        const bookings = await getCustomerBookings();
+        if (!cancelled) {
+          setUserBookings(Array.isArray(bookings) ? bookings : []);
+        }
+      } catch (e) {
+        console.warn('Failed to load customer bookings for reviews:', e.message);
+        if (!cancelled) setUserBookings([]);
+      }
+    };
+
+    loadUserBookings();
+
+    return () => {
+      cancelled = true;
+    };
   }, [getCustomerBookings, user?.email]);
 
   const reviewedBookingIds = useMemo(
