@@ -236,7 +236,7 @@ const PackageCard = ({ pkg, onShowMore, index = 0 }) => {
           <div className="pkc-rule" />
 
           <div className="pkc-actions">
-            <Link to={`/tour-booking/package?id=${pkg.id}`} className="pkc-book-btn">
+            <Link to={`/tour-booking/package/book?packageId=${pkg.id}&packageTitle=${encodeURIComponent(pkg.title || "Package Tour")}&packageDays=${encodeURIComponent(pkg.days || "")}`} className="pkc-book-btn">
               Book Now
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>

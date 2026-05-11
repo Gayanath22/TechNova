@@ -313,7 +313,7 @@ const PackageDetailModal = ({ pkg, onClose }) => {
               {/* CTA */}
               <div className="pdm-cta">
                 <Link
-                  to={`/tour-booking/package?id=${pkg.id}`}
+                  to={`/tour-booking/package/book?packageId=${pkg.id}&packageTitle=${encodeURIComponent(pkg.title || "Package Tour")}&packageDays=${encodeURIComponent(pkg.days || "")}`}
                   className="pdm-book-btn"
                 >
                   <span>Book This Package</span>
