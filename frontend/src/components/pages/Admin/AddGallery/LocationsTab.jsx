@@ -8,7 +8,7 @@ export default function LocationsTab({ locations, setLocations, onToast }) {
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("all");
-  const [pin, setPin] = useState(null);
+  const [mapPoint, setMapPoint] = useState(null);
   const [selColor, setSelColor] = useState(PIN_COLORS[0]);
   const [form, setForm] = useState({ name: "", region: "", lat: "", lng: "", desc: "" });
   const nextId = useRef(locations.length + 1);
@@ -35,7 +35,7 @@ export default function LocationsTab({ locations, setLocations, onToast }) {
     setEditId(null);
     setForm({ name: "", region: "", lat: "", lng: "", desc: "" });
     setSelColor(PIN_COLORS[0]);
-    setPin(null);
+    setMapPoint(null);
     setShowForm(true);
   };
 
@@ -43,13 +43,19 @@ export default function LocationsTab({ locations, setLocations, onToast }) {
     setEditId(loc.id);
     setForm({ name: loc.name, region: loc.region, lat: String(loc.lat), lng: String(loc.lng), desc: loc.desc });
     setSelColor(loc.col);
-    setPin({ x: ((loc.lng - 79.5) / 2.5) * 320, y: ((8.5 - loc.lat) / 5) * 160 });
+    setMapPoint({ lat: loc.lat, lng: loc.lng });
     setShowForm(true);
   };
 
-  const handleMapPin = ({ svgX, svgY, lat, lng }) => {
-    setPin({ x: svgX, y: svgY });
-    setForm((f) => ({ ...f, lat, lng }));
+  const handleMapPin = ({ lat, lng, name, region }) => {
+    setMapPoint({ lat, lng });
+    setForm((f) => ({
+      ...f,
+      name: name || f.name,
+      region: region || f.region,
+      lat: String(lat),
+      lng: String(lng),
+    }));
   };
 
   const save = () => {
@@ -237,7 +243,7 @@ export default function LocationsTab({ locations, setLocations, onToast }) {
 
                 <div className="mb-4">
                   <label className="text-[11px] font-bold text-stone-500 block mb-1.5 uppercase">Interactive Pin Locator</label>
-                  <SriLankaMap onPin={handleMapPin} pinX={pin?.x} pinY={pin?.y} pinColor={selColor} />
+                  <SriLankaMap onPin={handleMapPin} lat={mapPoint?.lat} lng={mapPoint?.lng} pinColor={selColor} hoverLocName={form.name} />
                 </div>
 
                 <div className="mb-4">

@@ -1,81 +1,263 @@
-import React from "react";
-import { Compass } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import { Compass, LocateFixed } from "lucide-react";
 
-export default function SriLankaMap({ onPin, pinColor = "#00b0a5", pinX, pinY, hoverLocName = "" }) {
-  const handleClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const svgX = (px / rect.width) * 320;
-    const svgY = (py / rect.height) * 160;
-    const lat = (8.5 - (svgY / 160) * 5).toFixed(4);
-    const lng = (79.5 + (svgX / 320) * 2.5).toFixed(4);
-    onPin && onPin({ svgX, svgY, lat, lng });
+const SRI_LANKA_CENTER = [7.8731, 80.7718];
+const PLACE_LOOKUP_TIMEOUT_MS = 6000;
+const KNOWN_PLACES = [
+  { name: "Colombo", region: "Western Province", lat: 6.9271, lng: 79.8612 },
+  { name: "Kandy", region: "Central Province", lat: 7.2906, lng: 80.6337 },
+  { name: "Sigiriya", region: "Cultural Triangle", lat: 7.957, lng: 80.7603 },
+  { name: "Galle", region: "Southern Province", lat: 6.0535, lng: 80.221 },
+  { name: "Ella", region: "Uva Province", lat: 6.8667, lng: 81.0466 },
+  { name: "Nuwara Eliya", region: "Central Province", lat: 6.9497, lng: 80.7891 },
+  { name: "Yala", region: "Southern Province", lat: 6.3728, lng: 81.5222 },
+  { name: "Mirissa", region: "Southern Province", lat: 5.9483, lng: 80.4716 },
+  { name: "Trincomalee", region: "Eastern Province", lat: 8.5922, lng: 81.2152 },
+  { name: "Arugam Bay", region: "Eastern Province", lat: 6.8442, lng: 81.8358 },
+  { name: "Dambulla", region: "Cultural Triangle", lat: 7.8742, lng: 80.6511 },
+  { name: "Pinnawala", region: "Sabaragamuwa", lat: 7.2993, lng: 80.3831 },
+];
+
+const createPinIcon = (pinColor) =>
+  L.divIcon({
+    className: "",
+    html: `
+      <div style="position:relative;width:28px;height:28px;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;inset:0;border-radius:9999px;background:${pinColor};opacity:.18;animation:sri-lanka-pin-pulse 1.8s ease-in-out infinite;"></div>
+        <div style="position:absolute;inset:5px;border-radius:9999px;background:${pinColor};opacity:.35;"></div>
+        <div style="position:relative;width:12px;height:12px;border-radius:9999px;background:${pinColor};border:2px solid white;box-shadow:0 6px 18px rgba(15,23,42,.25);"></div>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 26],
+  });
+
+const haversineDistance = (lat1, lng1, lat2, lng2) => {
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const deltaLat = toRadians(lat2 - lat1);
+  const deltaLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getFallbackPlaceName = (lat, lng) => {
+  const nearest = KNOWN_PLACES.reduce(
+    (best, place) => {
+      const distance = haversineDistance(lat, lng, place.lat, place.lng);
+      return distance < best.distance ? { ...place, distance } : best;
+    },
+    { name: "Sri Lanka location", region: "", distance: Number.POSITIVE_INFINITY }
+  );
+
+  return nearest.distance <= 40 ? { name: nearest.name, region: nearest.region } : { name: "Sri Lanka location", region: "" };
+};
+
+const reverseLookupPlaceInfo = async (lat, lng) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), PLACE_LOOKUP_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=12&addressdetails=1`,
+      {
+        headers: {
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Reverse lookup failed");
+    }
+
+    const data = await response.json();
+    const address = data?.address || {};
+    const rawName =
+      data?.name ||
+      address?.tourism ||
+      address?.city ||
+      address?.town ||
+      address?.village ||
+      address?.county ||
+      address?.state_district ||
+      address?.state ||
+      data?.display_name;
+    const rawRegion = address?.state || address?.province || address?.state_district || "";
+
+    if (!rawName) {
+      return getFallbackPlaceName(lat, lng);
+    }
+
+    return {
+      name: String(rawName).split(",")[0].trim() || getFallbackPlaceName(lat, lng).name,
+      region: String(rawRegion).trim() || getFallbackPlaceName(lat, lng).region,
+    };
+  } catch {
+    return getFallbackPlaceName(lat, lng);
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
+export default function SriLankaMap({ onPin, pinColor = "#00b0a5", lat, lng, hoverLocName = "" }) {
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const containerRef = useRef(null);
+  const onPinRef = useRef(onPin);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState("");
+
+  const markerIcon = useMemo(() => createPinIcon(pinColor), [pinColor]);
+
+  useEffect(() => {
+    onPinRef.current = onPin;
+  }, [onPin]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) {
+      return undefined;
+    }
+
+    const map = L.map(containerRef.current, {
+      zoomControl: true,
+      scrollWheelZoom: true,
+    }).setView(SRI_LANKA_CENTER, 8.2);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    map.on("click", (event) => {
+      const nextLat = Number(event.latlng.lat.toFixed(6));
+      const nextLng = Number(event.latlng.lng.toFixed(6));
+      reverseLookupPlaceInfo(nextLat, nextLng).then((place) => {
+        onPinRef.current?.({ lat: nextLat, lng: nextLng, ...place });
+      });
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      map.off();
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return;
+    }
+
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      const nextLatLng = [lat, lng];
+      if (!markerRef.current) {
+        markerRef.current = L.marker(nextLatLng, { draggable: true, icon: markerIcon }).addTo(map);
+        markerRef.current.on("dragend", () => {
+          const point = markerRef.current?.getLatLng();
+          if (point) {
+            const nextLat = Number(point.lat.toFixed(6));
+            const nextLng = Number(point.lng.toFixed(6));
+            reverseLookupPlaceInfo(nextLat, nextLng).then((place) => {
+              onPinRef.current?.({ lat: nextLat, lng: nextLng, ...place });
+            });
+          }
+        });
+      } else {
+        markerRef.current.setIcon(markerIcon);
+        markerRef.current.setLatLng(nextLatLng);
+      }
+
+      map.panTo(nextLatLng, { animate: true, duration: 0.35 });
+      return;
+    }
+
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+  }, [lat, lng, markerIcon]);
+
+  const centerOnCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation is not available in this browser.");
+      return;
+    }
+
+    setGeoError("");
+    setGeoLoading(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLat = Number(position.coords.latitude.toFixed(6));
+        const nextLng = Number(position.coords.longitude.toFixed(6));
+        mapRef.current?.setView([nextLat, nextLng], 13, { animate: true });
+        reverseLookupPlaceInfo(nextLat, nextLng).then((place) => {
+          onPinRef.current?.({ lat: nextLat, lng: nextLng, ...place });
+        });
+        setGeoLoading(false);
+      },
+      () => {
+        setGeoError("Unable to read the current location right now.");
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 }
+    );
   };
 
   return (
-    <div
-      onClick={handleClick}
-      className="relative rounded-xl overflow-hidden cursor-crosshair shadow-inner"
-      style={{ height: 180, background: "#E0F2FE" }}
-    >
-      <svg viewBox="0 0 320 160" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="320" height="160" fill="#E0F2FE" />
-        <line x1="80" y1="0" x2="80" y2="160" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
-        <line x1="160" y1="0" x2="160" y2="160" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
-        <line x1="240" y1="0" x2="240" y2="160" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
-        <line x1="0" y1="40" x2="320" y2="40" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
-        <line x1="0" y1="80" x2="320" y2="80" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
-        <line x1="0" y1="120" x2="320" y2="120" stroke="#bae6fd" strokeWidth="0.5" strokeDasharray="3" />
+    <div className="relative overflow-hidden rounded-xl shadow-inner border border-slate-200 bg-slate-100">
+      <div ref={containerRef} className="h-56 w-full" />
 
-        <path
-          d="M148,8 L155,15 L163,25 L170,36 L173,50 L176,62 L178,75 L180,88 L181,100 L181,112 L179,122 L175,132 L168,139 L158,145 L148,147 L138,145 L128,139 L121,132 L117,122 L115,112 L115,100 L116,88 L119,75 L122,62 L126,50 L131,36 L139,25 L145,15 Z"
-          fill="#D1FAE5"
-          stroke="#10B981"
-          strokeWidth="1"
-        />
+      <div className="absolute left-3 top-3 z-[500] flex flex-col gap-2 pointer-events-none">
+        <div className="pointer-events-auto rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm border border-slate-200 backdrop-blur inline-flex items-center gap-1.5">
+          <Compass className="w-3.5 h-3.5 text-teal-700" />
+          Click or drag the marker to update coordinates
+        </div>
+        {hoverLocName ? (
+          <div className="rounded-full bg-slate-900/85 px-3 py-1 text-[10px] font-semibold text-white shadow-sm inline-flex w-fit">
+            Focused: {hoverLocName}
+          </div>
+        ) : null}
+      </div>
 
-        <text x="148" y="78" textAnchor="middle" fontSize="9" fill="#047857" fontWeight="bold" fontFamily="system-ui">
-          SRI LANKA
-        </text>
-        <text x="148" y="90" textAnchor="middle" fontSize="6.5" fill="#059669" letterSpacing="0.5" fontFamily="system-ui">
-          ADMIN NAVIGATOR
-        </text>
+      <div className="absolute right-3 top-3 z-[500] flex flex-col gap-2 items-end">
+        <button
+          type="button"
+          onClick={centerOnCurrentLocation}
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm border border-slate-200 backdrop-blur hover:bg-white transition-colors"
+        >
+          <LocateFixed className="w-3.5 h-3.5 text-teal-700" />
+          {geoLoading ? "Locating..." : "Use current location"}
+        </button>
+        {geoError ? (
+          <div className="max-w-56 rounded-lg bg-rose-50 px-3 py-1.5 text-[10px] font-medium text-rose-700 border border-rose-200 shadow-sm">
+            {geoError}
+          </div>
+        ) : null}
+      </div>
 
-        <g opacity="0.45">
-          <circle cx="120" cy="115" r="2" fill="#1E293B" />
-          <text x="114" y="117" fontSize="5" textAnchor="end" fill="#1E293B">Colombo</text>
-          <circle cx="155" cy="85" r="2" fill="#1E293B" />
-          <text x="159" y="87" fontSize="5" textAnchor="start" fill="#1E293B">Kandy</text>
-          <circle cx="157" cy="45" r="2" fill="#1E293B" />
-          <text x="161" y="47" fontSize="5" textAnchor="start" fill="#1E293B">Sigiriya</text>
-          <circle cx="128" cy="148" r="2" fill="#1E293B" />
-          <text x="124" y="150" fontSize="5" textAnchor="end" fill="#1E293B">Galle Fort</text>
-        </g>
-
-        {pinX !== undefined && pinY !== undefined && (
-          <g>
-            <circle cx={pinX} cy={pinY} r="8" fill={pinColor} fillOpacity="0.2" stroke={pinColor} strokeWidth="1" />
-            <circle cx={pinX} cy={pinY} r="5" fill={pinColor} fillOpacity="0.4" stroke={pinColor} strokeWidth="1" />
-            <circle cx={pinX} cy={pinY} r="2.5" fill={pinColor} />
-            <path d={`M ${pinX} ${pinY} L ${pinX} ${pinY - 14}`} stroke={pinColor} strokeWidth="1.5" strokeLinecap="round" />
-            <circle cx={pinX} cy={pinY - 14} r="2" fill={pinColor} />
-          </g>
-        )}
-      </svg>
-      {pinX === undefined && (
-        <div className="absolute inset-x-0 bottom-2 text-center pointer-events-none select-none">
+      <div className="absolute inset-x-0 bottom-2 z-[500] flex justify-center pointer-events-none select-none">
+        {!Number.isFinite(lat) || !Number.isFinite(lng) ? (
           <span className="inline-flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full bg-white/95 text-teal-800 shadow-sm border border-teal-100 font-medium animate-pulse">
             <Compass className="w-3.5 h-3.5" />
-            Click anywhere to pin coordinates
+            Pick a point on the map to pin coordinates
           </span>
-        </div>
-      )}
-      {hoverLocName && (
-        <div className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-md bg-stone-900/85 text-stone-100 font-medium">
-          Focused: {hoverLocName}
-        </div>
-      )}
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full bg-slate-900/85 text-white shadow-sm border border-white/10 font-medium">
+            {lat.toFixed(4)}, {lng.toFixed(4)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
