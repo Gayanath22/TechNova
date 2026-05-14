@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import CategoryGrid from './CategoryGrid';
+import CategoryForm from './CategoryForm';
 import VehicleList from './VehicleList';
 import VehicleForm from './VehicleForm';
 import VehicleDetailsModal from './VehicleDetailsModal';
@@ -21,6 +22,10 @@ const FleetManagement = () => {
     const [stats, setStats] = useState(null);
     const [selectedCategory, setSelectedCategory] = useState(null);
     const [selectedVehicle, setSelectedVehicle] = useState(null);
+    const [showCategoryForm, setShowCategoryForm] = useState(false);
+    const [editingCategory, setEditingCategory] = useState(null);
+    const [showCategoryDeleteConfirm, setShowCategoryDeleteConfirm] = useState(false);
+    const [deletingCategory, setDeletingCategory] = useState(null);
 
     // Loading states
     const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -120,6 +125,24 @@ const FleetManagement = () => {
         setShowForm(true);
     };
 
+    // Handle add new category
+    const handleAddCategory = () => {
+        setEditingCategory(null);
+        setShowCategoryForm(true);
+    };
+
+    // Handle edit category
+    const handleEditCategory = (category) => {
+        setEditingCategory(category);
+        setShowCategoryForm(true);
+    };
+
+    // Handle delete category click
+    const handleDeleteCategoryClick = (category) => {
+        setDeletingCategory(category);
+        setShowCategoryDeleteConfirm(true);
+    };
+
     // Handle edit vehicle
     const handleEditVehicle = (vehicle) => {
         setEditingVehicle(vehicle);
@@ -168,6 +191,35 @@ const FleetManagement = () => {
         }
     };
 
+    // Handle category form submit (create/update)
+    const handleCategorySubmit = async (formData) => {
+        try {
+            setFormLoading(true);
+            let response;
+
+            if (editingCategory) {
+                response = await categoryService.update(editingCategory.id, formData);
+                showToast('Category updated successfully!');
+            } else {
+                response = await categoryService.create(formData);
+                showToast('Category added successfully!');
+            }
+
+            if (response.success) {
+                setShowCategoryForm(false);
+                setEditingCategory(null);
+                fetchCategories();
+                fetchVehicles(selectedCategory?.id);
+            }
+        } catch (error) {
+            console.error('Error saving category:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to save category';
+            showToast(errorMsg, 'error');
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
     // Handle delete confirm
     const handleDeleteConfirm = async () => {
         try {
@@ -185,6 +237,36 @@ const FleetManagement = () => {
         } catch (error) {
             console.error('Error deleting vehicle:', error);
             showToast('Failed to delete vehicle', 'error');
+        } finally {
+            setDeleteLoading(false);
+        }
+    };
+
+    // Handle category delete confirm
+    const handleCategoryDeleteConfirm = async () => {
+        try {
+            setDeleteLoading(true);
+            const response = await categoryService.delete(deletingCategory.id);
+
+            if (response.success) {
+                showToast('Category deleted successfully!');
+                setShowCategoryDeleteConfirm(false);
+                setDeletingCategory(null);
+
+                if (selectedCategory?.id === deletingCategory.id) {
+                    setSelectedCategory(null);
+                    fetchVehicles();
+                } else {
+                    fetchVehicles(selectedCategory?.id);
+                }
+
+                fetchCategories();
+                fetchStats();
+            }
+        } catch (error) {
+            console.error('Error deleting category:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to delete category';
+            showToast(errorMsg, 'error');
         } finally {
             setDeleteLoading(false);
         }
@@ -221,15 +303,30 @@ const FleetManagement = () => {
                         <h1 className="text-3xl font-bold text-gray-800">Fleet Management</h1>
                         <p className="text-gray-500 mt-1">Manage your vehicle fleet and categories</p>
                     </div>
-                    <button
-                        onClick={handleAddVehicle}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2 shadow-md hover:shadow-lg"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Vehicle
-                    </button>
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            onClick={handleAddCategory}
+                            type="button"
+                            className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-6 py-2.5 font-medium shadow-sm transition-colors"
+                            style={{ backgroundColor: '#ffffff', color: '#374151', borderColor: '#d1d5db' }}
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Category
+                        </button>
+                        <button
+                            onClick={handleAddVehicle}
+                            type="button"
+                            className="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-6 py-2.5 font-medium shadow-md transition-colors"
+                            style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add Vehicle
+                        </button>
+                    </div>
                 </div>
 
                 {/* Fleet Statistics */}
@@ -240,6 +337,8 @@ const FleetManagement = () => {
                     categories={categories}
                     selectedCategory={selectedCategory}
                     onCategorySelect={handleCategorySelect}
+                    onEditCategory={handleEditCategory}
+                    onDeleteCategory={handleDeleteCategoryClick}
                     loading={categoriesLoading}
                 />
 
@@ -277,6 +376,18 @@ const FleetManagement = () => {
                 vehicle={selectedVehicle}
             />
 
+            {/* Category Form Modal */}
+            <CategoryForm
+                isOpen={showCategoryForm}
+                onClose={() => {
+                    setShowCategoryForm(false);
+                    setEditingCategory(null);
+                }}
+                onSubmit={handleCategorySubmit}
+                category={editingCategory}
+                loading={formLoading}
+            />
+
             {/* Delete Confirmation Modal */}
             <DeleteConfirmModal
                 isOpen={showDeleteConfirm}
@@ -286,6 +397,18 @@ const FleetManagement = () => {
                 }}
                 onConfirm={handleDeleteConfirm}
                 vehicleName={deletingVehicle?.vehicle_name}
+                loading={deleteLoading}
+            />
+
+            <DeleteConfirmModal
+                isOpen={showCategoryDeleteConfirm}
+                onClose={() => {
+                    setShowCategoryDeleteConfirm(false);
+                    setDeletingCategory(null);
+                }}
+                onConfirm={handleCategoryDeleteConfirm}
+                entityType="Category"
+                itemName={deletingCategory?.name}
                 loading={deleteLoading}
             />
         </div>

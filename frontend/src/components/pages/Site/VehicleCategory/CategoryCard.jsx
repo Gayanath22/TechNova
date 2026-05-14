@@ -105,18 +105,19 @@ const VehicleCard = ({ vehicle, onViewDetails, onBookNow }) => {
                 <div className="flex gap-2">
                     <button
                         onClick={() => onViewDetails(vehicle)}
-                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 rounded-lg transition-colors text-sm"
+                        className="flex-1 font-medium py-2.5 rounded-lg transition-colors text-sm hover:shadow-md"
+                        style={{ backgroundColor: '#ffffff', color: '#374151', border: '1px solid #d1d5db' }}
                     >
                         View Details
                     </button>
                     <button
                         onClick={() => onBookNow(vehicle)}
                         disabled={!isAvailable}
-                        className={`flex-1 font-medium py-2.5 rounded-lg transition-colors text-sm ${
-                            isAvailable
-                                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        }`}
+                        className="flex-1 font-medium py-2.5 rounded-lg transition-colors text-sm"
+                        style={isAvailable 
+                            ? { backgroundColor: '#ffffff', color: '#2563eb', border: '1px solid #93c5fd' } 
+                            : { backgroundColor: '#ffffff', color: '#9ca3af', cursor: 'not-allowed', border: '1px solid #d1d5db' }
+                        }
                     >
                         {isAvailable ? 'Book Now' : 'Not Available'}
                     </button>

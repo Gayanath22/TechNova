@@ -1,7 +1,17 @@
 import React from 'react';
 
-const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, vehicleName, loading }) => {
+const DeleteConfirmModal = ({
+    isOpen,
+    onClose,
+    onConfirm,
+    loading,
+    entityType = 'Vehicle',
+    itemName,
+    vehicleName,
+}) => {
     if (!isOpen) return null;
+
+    const displayName = itemName || vehicleName || 'this item';
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -13,11 +23,11 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, vehicleName, loading }
                         </svg>
                     </div>
                     <h3 className="text-lg font-bold text-gray-800 mb-2">
-                        Delete Vehicle
+                        Delete {entityType}
                     </h3>
                     <p className="text-sm text-gray-500 mb-6">
                         Are you sure you want to delete{' '}
-                        <strong className="text-gray-700">{vehicleName}</strong>?
+                        <strong className="text-gray-700">{displayName}</strong>?
                         This action cannot be undone.
                     </p>
                     <div className="flex gap-3">

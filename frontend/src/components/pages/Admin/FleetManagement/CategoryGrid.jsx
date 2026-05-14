@@ -1,7 +1,14 @@
 import React from 'react';
 import CategoryCard from './CategoryCard';
 
-const CategoryGrid = ({ categories, selectedCategory, onCategorySelect, loading }) => {
+const CategoryGrid = ({
+    categories,
+    selectedCategory,
+    onCategorySelect,
+    onEditCategory,
+    onDeleteCategory,
+    loading,
+}) => {
     if (loading) {
         return (
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
@@ -53,6 +60,8 @@ const CategoryGrid = ({ categories, selectedCategory, onCategorySelect, loading 
                         category={category}
                         isSelected={selectedCategory?.id === category.id}
                         onClick={onCategorySelect}
+                        onEdit={onEditCategory}
+                        onDelete={onDeleteCategory}
                     />
                 ))}
             </div>
