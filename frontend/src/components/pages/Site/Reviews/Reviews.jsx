@@ -10,6 +10,7 @@ import { mockReviews }  from './reviewsData';
 import { getCountryFlag } from './countryFlags';
 import {
   fetchPublishedReviews,
+  fetchReviewStats,
   fetchReviewableTours,
   createReview,
 } from './reviewsApi';
@@ -38,6 +39,8 @@ const Reviews = () => {
   const { getCustomerBookings } = useBookings();
   const navigate     = useNavigate();
   const [reviews, setReviews]       = useState(loadReviews);
+  const [filters, setFilters] = useState({ stars: 'All', tourType: '', sort: 'newest' });
+  const [stats, setStats] = useState(null);
   const [userBookings, setUserBookings] = useState([]);
   const [serverReviewableTours, setServerReviewableTours] = useState([]);
   const [modalOpen, setModalOpen]   = useState(false);
@@ -97,10 +100,10 @@ const Reviews = () => {
 
     const loadFromServer = async () => {
       try {
-        const serverReviews = await fetchPublishedReviews();
-        if (!cancelled && serverReviews.length) {
-          setReviews(serverReviews);
-          saveReviews(serverReviews);
+        const serverReviews = await fetchPublishedReviews(filters);
+        if (!cancelled && Array.isArray(serverReviews)) {
+          setReviews(serverReviews.length ? serverReviews : []);
+          saveReviews(serverReviews.length ? serverReviews : []);
         }
       } catch (e) {
         console.warn('Using local reviews fallback:', e.message);
@@ -111,6 +114,38 @@ const Reviews = () => {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Reload when filters change
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const serverReviews = await fetchPublishedReviews(filters);
+        if (!cancelled && Array.isArray(serverReviews)) {
+          setReviews(serverReviews);
+          saveReviews(serverReviews);
+        }
+      } catch (e) {
+        console.warn('Filter load failed, keeping existing reviews:', e.message);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [filters]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadStats = async () => {
+      try {
+        const s = await fetchReviewStats();
+        if (!cancelled) setStats(s);
+      } catch (e) {
+        console.warn('Failed to load review stats:', e.message);
+      }
+    };
+    loadStats();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -215,10 +250,10 @@ const Reviews = () => {
       />
 
       {/* Aggregate stats */}
-      <ReviewStats reviews={reviews} />
+      <ReviewStats reviews={reviews} stats={stats} />
 
       {/* Review grid with filters */}
-      <ReviewGrid reviews={reviews} />
+      <ReviewGrid reviews={reviews} filters={filters} setFilters={setFilters} />
 
       {/* Form modal */}
       <ReviewFormModal

@@ -4,6 +4,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useBookings } from '../../../../context/BookingsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { buildApiUrl } from '../../../../config/api';
+import { fetchPublishedReviews } from '../../Site/Reviews/reviewsApi';
 
 const MyReviews = ({ isEmbedded = false }) => {
   const navigate = useNavigate();
@@ -44,15 +45,21 @@ const MyReviews = ({ isEmbedded = false }) => {
   const refreshReviews = useCallback(async () => {
     if (!userEmail) return;
     try {
-      const res = await fetch(buildApiUrl('/reviews'));
-      if (!res.ok) {
-        throw new Error(`Failed to load reviews (${res.status})`);
+      try {
+        const serverRevs = await fetchPublishedReviews({ email: userEmail });
+        if (Array.isArray(serverRevs)) {
+          setMyReviews(serverRevs);
+          return;
+        }
+      } catch (e) {
+        console.warn('Server reviews fetch failed, falling back:', e.message);
       }
+      // Fallback: previous behavior
+      const res = await fetch(buildApiUrl('/reviews'));
+      if (!res.ok) throw new Error(`Failed to load reviews (${res.status})`);
       const data = await res.json();
-      if (data.reviews && userEmail) {
-        const userRevs = data.reviews.filter(r => 
-          r.user?.email === userEmail || r.user?.name === user?.name
-        );
+      if (data.reviews) {
+        const userRevs = data.reviews.filter(r => r.user?.email === userEmail || r.user?.name === user?.name);
         setMyReviews(userRevs);
       }
     } catch (e) {

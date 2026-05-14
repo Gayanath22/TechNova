@@ -28,10 +28,14 @@ const Package = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(buildApiUrl('/packages'));
+        const params = new URLSearchParams();
+        if (activeType && activeType !== 'All') params.set('type', activeType);
+        if (activeDays && activeDays !== 'All') params.set('days', String(activeDays));
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const res = await fetch(buildApiUrl(`/packages${query}`));
         if (res.ok) {
           const data = await res.json();
-          setPackages(data);
+          setPackages(Array.isArray(data) ? data : data.packages || []);
         }
       } catch (e) {
         console.error('Failed to load packages', e);
@@ -40,19 +44,16 @@ const Package = () => {
   }, [dataVersion]);
 
   // Re-filters automatically whenever data or filters change
-  const filtered = useMemo(() => {
-    return packages.filter(p =>
-      (activeType === 'All' || p.type === activeType) &&
-      (activeDays === 'All' || p.days === Number(activeDays))
-    );
-  }, [packages, activeType, activeDays, dataVersion]);
+  // packages is provided by the server already filtered according to activeType/activeDays
 
   const handleTypeChange = (type) => {
     setActiveType(type);
+    setDataVersion(v => v + 1); // trigger reload with new filter
   };
 
   const handleDaysChange = (days) => {
     setActiveDays(days);
+    setDataVersion(v => v + 1); // trigger reload with new filter
   };
 
   const handleShowMore = async (pkg) => {
@@ -89,12 +90,12 @@ const Package = () => {
         activeDays={activeDays}
         onTypeChange={handleTypeChange}
         onDaysChange={handleDaysChange}
-        total={filtered.length}
+        total={packages.length}
       />
 
       {/* Package grid */}
       <PackageGrid
-        packages={filtered}
+        packages={packages}
         onShowMore={handleShowMore}
       />
 

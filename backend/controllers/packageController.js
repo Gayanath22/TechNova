@@ -354,17 +354,50 @@ exports.listAdminPackages = async (req, res) => {
 exports.listPublicPackages = async (req, res) => {
   try {
     const schemaMeta = await getPackageSchemaMeta();
+    const qType = req.query.type || null;
+    const qDays = req.query.days || null;
+
+    const where = [];
+    const params = [];
+
+    if (qType) {
+      const typeEnum = toPackageTypeEnum(qType);
+      if (typeEnum && schemaMeta.hasType) {
+        where.push('p.type = ?');
+        params.push(typeEnum);
+      }
+    }
+
+    if (qDays) {
+      const daysLabel = toPackageDaysLabel(qDays);
+      if (daysLabel && schemaMeta.hasDays) {
+        if (schemaMeta.daysType.includes('enum')) {
+          where.push('p.days = ?');
+          params.push(daysLabel);
+        } else {
+          const daysNum = toPackageDaysNumber(daysLabel);
+          if (!Number.isNaN(daysNum)) {
+            where.push('p.days = ?');
+            params.push(daysNum);
+          }
+        }
+      }
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
     const [packages] = await db.execute(`
       SELECT
-        package_id,
-        title,
-        ${schemaMeta.hasType ? 'type' : 'NULL AS type'},
-        ${schemaMeta.hasDays ? 'days' : 'NULL AS days'},
-        ${schemaMeta.hasDescription ? 'description' : 'NULL AS description'},
-        ${schemaMeta.hasImageUrl ? 'image_url' : 'NULL AS image_url'}
-      FROM package
-      ORDER BY package_id DESC
-    `);
+        p.package_id,
+        p.title,
+        ${schemaMeta.hasType ? 'p.type' : 'NULL AS type'},
+        ${schemaMeta.hasDays ? 'p.days' : 'NULL AS days'},
+        ${schemaMeta.hasDescription ? 'p.description' : 'NULL AS description'},
+        ${schemaMeta.hasImageUrl ? 'p.image_url' : 'NULL AS image_url'}
+      FROM package p
+      ${whereSql}
+      ORDER BY p.package_id DESC
+    `, params);
     // For performance, load up to first 2 destinations per package and include hidden count
     const pkgIds = packages.map(p => p.package_id);
     let placesByPkg = {};
@@ -388,7 +421,17 @@ exports.listPublicPackages = async (req, res) => {
       }, {});
     }
 
-    const result = packages.map(p => {
+    // If schema doesn't have a dedicated type column but the client requested a type filter,
+    // perform a secondary filter by decoding the description metadata.
+    let filteredPackages = packages;
+    if (qType && !schemaMeta.hasType) {
+      filteredPackages = packages.filter(p => {
+        const decoded = decodeDescriptionWithTypeMeta(p.description);
+        return decoded.type && decoded.type.toUpperCase() === String(qType).trim().toUpperCase();
+      });
+    }
+
+    const result = filteredPackages.map(p => {
       const decoded = schemaMeta.hasType
         ? { type: toPackageTypeLabel(p.type), description: p.description }
         : decodeDescriptionWithTypeMeta(p.description);
