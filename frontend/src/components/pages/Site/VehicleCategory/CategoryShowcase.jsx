@@ -55,7 +55,17 @@ const CategoryShowcase = ({ category }) => {
     return (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-6 mb-8 border border-blue-100">
             <div className="flex flex-col md:flex-row items-center gap-6">
-                <div className="text-7xl md:text-8xl">{info.icon}</div>
+                <div className="h-28 w-28 md:h-32 md:w-32 overflow-hidden rounded-2xl border border-white/70 bg-white shadow-sm flex items-center justify-center">
+                    {category.image_url ? (
+                        <img
+                            src={category.image_url}
+                            alt={category.name}
+                            className="h-full w-full object-cover"
+                        />
+                    ) : (
+                        <div className="text-7xl md:text-8xl">{info.icon}</div>
+                    )}
+                </div>
                 <div className="flex-1 text-center md:text-left">
                     <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">
                         {category.name}

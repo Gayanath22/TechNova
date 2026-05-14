@@ -204,18 +204,19 @@ const VehicleDetailsModal = ({ isOpen, onClose, vehicle, onBookNow }) => {
                     <div className="flex flex-col md:flex-row gap-3 pt-4 border-t border-gray-200">
                         <button
                             onClick={onClose}
-                            className="flex-1 px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                            className="flex-1 px-6 py-2.5 font-medium rounded-xl transition-colors"
+                            style={{ backgroundColor: '#ffffff', color: '#374151', border: '1px solid #d1d5db' }}
                         >
                             Close
                         </button>
                         <button
                             onClick={() => onBookNow(vehicle)}
                             disabled={!isAvailable}
-                            className={`flex-1 px-6 py-2.5 rounded-xl font-medium transition-all ${
-                                isAvailable
-                                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            }`}
+                            className="flex-1 px-6 py-2.5 rounded-xl font-medium transition-all"
+                            style={isAvailable 
+                                ? { backgroundColor: '#ffffff', color: '#6dced4', border: '1px solid #93c5fd', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }
+                                : { backgroundColor: '#ffffff', color: '#9ca3af', cursor: 'not-allowed', border: '1px solid #d1d5db' }
+                            }
                         >
                             {isAvailable ? '🎯 Book Now' : 'Not Available'}
                         </button>
