@@ -140,7 +140,16 @@ const AdminPackageFormModal = ({ isOpen, pkg, onSave, onClose, dark = false }) =
 
   useEffect(() => {
     if (isOpen) {
-      setForm(pkg ? { ...pkg, highlights: [...(pkg.highlights || ['','','',''])], destinations: pkg.destinations.map(d => ({...d})) } : emptyPackage());
+      setForm(pkg ? {
+        ...emptyPackage(),
+        ...pkg,
+        withGuid: Boolean(pkg.guid),
+        guideName: pkg.guid?.name || '',
+        guideNic: pkg.guid?.nic || '',
+        guideContactDetails: pkg.guid?.contactDetails || '',
+        highlights: [...(pkg.highlights || ['','','',''])],
+        destinations: (pkg.destinations || []).map(d => ({ ...d })),
+      } : emptyPackage());
       setErrors({});
     }
   }, [isOpen, pkg]);
@@ -154,6 +163,25 @@ const AdminPackageFormModal = ({ isOpen, pkg, onSave, onClose, dark = false }) =
   };
   const addHL = () => set('highlights', [...form.highlights, '']);
   const removeHL = (i) => set('highlights', form.highlights.filter((_, idx) => idx !== i));
+
+  const setGuidEnabled = (enabled) => {
+    setForm(f => ({
+      ...f,
+      withGuid: enabled,
+      guideName: enabled ? f.guideName : '',
+      guideNic: enabled ? f.guideNic : '',
+      guideContactDetails: enabled ? f.guideContactDetails : '',
+    }));
+    if (!enabled) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next.guideName;
+        delete next.guideNic;
+        delete next.guideContactDetails;
+        return next;
+      });
+    }
+  };
 
   const setDest = (i, key, val) => {
     const dests = form.destinations.map((d, idx) => idx === i ? { ...d, [key]: val } : d);
@@ -170,6 +198,11 @@ const AdminPackageFormModal = ({ isOpen, pkg, onSave, onClose, dark = false }) =
     if (!form.days)               e.days        = 'Duration is required.';
       // require either image URL or uploaded file
       if (!form.image.trim() && !form.packageImageFile) e.image = 'Cover image is required (URL or file).';
+    if (form.withGuid) {
+      if (!form.guideName.trim()) e.guideName = 'Guide name is required.';
+      if (!form.guideNic.trim()) e.guideNic = 'NIC is required.';
+      if (!form.guideContactDetails.trim()) e.guideContactDetails = 'Contact details are required.';
+    }
     if (form.destinations.length === 0) e.destinations = 'Add at least one destination.';
     if (form.destinations.some(d => !d.name.trim())) e.destinations = 'All destination names are required.';
     setErrors(e);
@@ -184,6 +217,7 @@ const AdminPackageFormModal = ({ isOpen, pkg, onSave, onClose, dark = false }) =
         highlights: form.highlights.filter(h => h.trim()),
         destinations: form.destinations.map(d => ({ ...d })),
         packageImageFile: form.packageImageFile || null,
+        withGuid: Boolean(form.withGuid),
       };
       onSave(payload);
   };
@@ -442,6 +476,61 @@ const AdminPackageFormModal = ({ isOpen, pkg, onSave, onClose, dark = false }) =
                     <div style={{ marginTop: 6, fontSize: 12, color: '#5a8080' }}>{form.packageImageFile.name}</div>
                   )}
                 </Field>
+
+                <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:'10px', fontSize:'13px', fontWeight:700, color: dark ? '#e2e8f0' : '#0d2b2b' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.withGuid}
+                      onChange={e => setGuidEnabled(e.target.checked)}
+                      style={{ width:'16px', height:'16px', accentColor:'#00b0a5' }}
+                    />
+                    With guide
+                  </label>
+
+                  <AnimatePresence initial={false}>
+                    {form.withGuid && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, y: -8 }}
+                        animate={{ opacity: 1, height: 'auto', y: 0 }}
+                        exit={{ opacity: 0, height: 0, y: -8 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        style={{ overflow: 'hidden' }}
+                      >
+                        <div style={{ display:'grid', gap:'14px' }}>
+                          <Field label="Guide Name *" error={errors.guideName} dark={dark}>
+                            <input
+                              style={inputStyle(errors.guideName, dark)}
+                              placeholder="e.g. Nimal Perera"
+                              value={form.guideName}
+                              onChange={e => set('guideName', e.target.value)}
+                            />
+                          </Field>
+
+                          <div className="apfm-2col">
+                            <Field label="NIC *" error={errors.guideNic} dark={dark}>
+                              <input
+                                style={inputStyle(errors.guideNic, dark)}
+                                placeholder="e.g. 199912345V"
+                                value={form.guideNic}
+                                onChange={e => set('guideNic', e.target.value)}
+                              />
+                            </Field>
+
+                            <Field label="Contact Details *" error={errors.guideContactDetails} dark={dark}>
+                              <textarea
+                                style={taStyle(errors.guideContactDetails, dark)}
+                                placeholder="Phone, email, or other contact details"
+                                value={form.guideContactDetails}
+                                onChange={e => set('guideContactDetails', e.target.value)}
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                 
 

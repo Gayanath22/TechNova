@@ -76,13 +76,24 @@ CREATE TABLE place_activity (
     FOREIGN KEY (activity_id) REFERENCES activity(activity_id)
 );
 
+CREATE TABLE guid (
+    guid_id           INT AUTO_INCREMENT PRIMARY KEY,
+    guid_name         VARCHAR(100) NOT NULL,
+    nic               VARCHAR(50) NOT NULL,
+    contact_details   TEXT NOT NULL,
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE package (
     package_id  INT AUTO_INCREMENT PRIMARY KEY,
     title       VARCHAR(150) NOT NULL,
     type        ENUM('ADVENTURE','CULTURAL HERITAGE','WELLNESS & AYURVEDA','BEACH SIDE','HILL COUNTRY','SAFARI') NOT NULL,
     days        ENUM ('7 DAYS','14 DAYS','21 DAYS','28 DAYS') NOT NULL,
     description TEXT,
-    image_url   VARCHAR(255)
+    image_url   VARCHAR(255),
+    guid_id     INT NULL,
+    FOREIGN KEY (guid_id) REFERENCES guid(guid_id) ON DELETE SET NULL
 );
 
 CREATE TABLE package_place (
@@ -206,6 +217,16 @@ CREATE TABLE review_image (
     image_url VARCHAR(255) NOT NULL,
     FOREIGN KEY (review_id) REFERENCES review(review_id)
 );
+
+CREATE VIEW review_star_summary AS
+SELECT
+    COUNT(*) AS total_reviews,
+    SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) AS five_star_reviews,
+    SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) AS four_star_reviews,
+    SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) AS three_star_reviews,
+    SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) AS two_star_reviews,
+    SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) AS one_star_reviews
+FROM review;
 
 CREATE TABLE gallery_location (
     location_id INT AUTO_INCREMENT PRIMARY KEY,

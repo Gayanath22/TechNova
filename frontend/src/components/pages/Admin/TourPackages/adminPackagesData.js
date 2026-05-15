@@ -40,6 +40,12 @@ const reloadFromBackend = async () => {
       description: p.description,
       image: p.image_url || p.image || '',
       destinations: Array.isArray(p.destinations) ? p.destinations : [],
+      guid: p.guid ? {
+        id: p.guid.id,
+        name: p.guid.name,
+        nic: p.guid.nic,
+        contactDetails: p.guid.contactDetails,
+      } : null,
     }));
     notify();
     emitPackagesChanged();
@@ -67,6 +73,12 @@ export const packageStore = {
             description: p.description,
             image: p.image_url || p.image_url || p.image || '',
             destinations: Array.isArray(p.destinations) ? p.destinations : [],
+            guid: p.guid ? {
+              id: p.guid.id,
+              name: p.guid.name,
+              nic: p.guid.nic,
+              contactDetails: p.guid.contactDetails,
+            } : null,
           }));
         } else {
           _packages = [];
@@ -89,6 +101,10 @@ export const packageStore = {
       form.append('type', data.type);
       form.append('days', String(data.days));
       form.append('description', data.description || '');
+      form.append('withGuid', String(Boolean(data.withGuid)));
+      form.append('guideName', data.guideName || '');
+      form.append('guideNic', data.guideNic || '');
+      form.append('guideContactDetails', data.guideContactDetails || '');
 
       if (data.packageImageFile) {
         form.append('packageImage', data.packageImageFile);
@@ -137,6 +153,11 @@ export const packageStore = {
         image: created.image_url || created.image || data.image || '',
         destinations: data.destinations || [],
         highlights: data.highlights || [],
+        guid: created.guid || (data.withGuid ? {
+          name: data.guideName,
+          nic: data.guideNic,
+          contactDetails: data.guideContactDetails,
+        } : null),
       };
       _packages = [newPkg, ..._packages];
       notify();
@@ -161,6 +182,10 @@ export const packageStore = {
       if (data.type != null) form.append('type', data.type);
       if (data.days != null) form.append('days', String(data.days));
       if (data.description != null) form.append('description', data.description || '');
+      form.append('withGuid', String(Boolean(data.withGuid)));
+      form.append('guideName', data.guideName || '');
+      form.append('guideNic', data.guideNic || '');
+      form.append('guideContactDetails', data.guideContactDetails || '');
       if (data.packageImageFile) form.append('packageImage', data.packageImageFile);
 
       const dests = (data.destinations || []).map((d, i) => {
@@ -245,6 +270,10 @@ export const emptyPackage = () => ({
   description:  '',
   image:        '',
   highlights:   ['', '', '', ''],
+  withGuid:     false,
+  guideName:    '',
+  guideNic:     '',
+  guideContactDetails: '',
   destinations: [
     { name: '', days: 1, description: '', image: '', imageFile: null, activities: [] },
   ],
