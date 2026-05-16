@@ -1,5 +1,36 @@
 import React, { useState, useEffect } from 'react';
 
+const toDateInputValue = (value) => {
+    if (!value) return '';
+
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toISOString().slice(0, 10);
+};
+
+const getInsuranceEndDate = (startDate) => {
+    const normalizedStartDate = toDateInputValue(startDate);
+    if (!normalizedStartDate) return '';
+
+    const [year, month, day] = normalizedStartDate.split('-').map((part) => Number(part));
+    const oneYearLater = new Date(Date.UTC(year + 1, month - 1, day));
+
+    if (
+        oneYearLater.getUTCFullYear() !== year + 1 ||
+        oneYearLater.getUTCMonth() !== month - 1 ||
+        oneYearLater.getUTCDate() !== day
+    ) {
+        return '';
+    }
+
+    return oneYearLater.toISOString().slice(0, 10);
+};
+
 const initialFormData = {
     category_id: '',
     vehicle_name: '',
@@ -8,12 +39,16 @@ const initialFormData = {
     year: new Date().getFullYear(),
     color: '',
     license_plate: '',
+    vehicle_license: '',
     seats: 4,
     fuel_type: 'Petrol',
     transmission: 'Automatic',
     air_conditioning: true,
     luggage_capacity: 2,
     price_per_day: '',
+    insurance_provider: '',
+    insurance_start_date: '',
+    insurance_end_date: '',
     status: 'Available',
     mileage: '',
     engine_capacity: '',
@@ -38,12 +73,16 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
                 year: vehicle.year || new Date().getFullYear(),
                 color: vehicle.color || '',
                 license_plate: vehicle.license_plate || '',
+                vehicle_license: vehicle.vehicle_license || '',
                 seats: vehicle.seats || 4,
                 fuel_type: vehicle.fuel_type || 'Petrol',
                 transmission: vehicle.transmission || 'Automatic',
                 air_conditioning: vehicle.air_conditioning !== false,
                 luggage_capacity: vehicle.luggage_capacity || 2,
                 price_per_day: vehicle.price_per_day || '',
+                insurance_provider: vehicle.insurance_provider || '',
+                insurance_start_date: toDateInputValue(vehicle.insurance_start_date),
+                insurance_end_date: toDateInputValue(vehicle.insurance_end_date),
                 status: vehicle.status || 'Available',
                 mileage: vehicle.mileage || '',
                 engine_capacity: vehicle.engine_capacity || '',
@@ -61,14 +100,28 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData((prev) => ({
-            ...prev,
-            [name]: type === 'checkbox' ? checked : value,
-        }));
+        const nextValue = type === 'checkbox' ? checked : value;
+
+        setFormData((prev) => {
+            const nextState = {
+                ...prev,
+                [name]: nextValue,
+            };
+
+            if (name === 'insurance_start_date') {
+                nextState.insurance_end_date = getInsuranceEndDate(nextValue);
+            }
+
+            return nextState;
+        });
 
         // Clear error when user types
         if (errors[name]) {
             setErrors((prev) => ({ ...prev, [name]: '' }));
+        }
+
+        if (name === 'insurance_start_date' && errors.insurance_end_date) {
+            setErrors((prev) => ({ ...prev, insurance_end_date: '' }));
         }
     };
 
@@ -91,8 +144,21 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
         if (!formData.brand.trim()) newErrors.brand = 'Brand is required';
         if (!formData.model.trim()) newErrors.model = 'Model is required';
         if (!formData.license_plate.trim()) newErrors.license_plate = 'License plate is required';
+        if (!formData.vehicle_license.trim()) newErrors.vehicle_license = 'Vehicle license is required';
         if (!formData.seats || formData.seats < 1) newErrors.seats = 'Valid seat count is required';
         if (!formData.price_per_day || formData.price_per_day <= 0) newErrors.price_per_day = 'Valid price is required';
+        if (!formData.insurance_provider.trim()) newErrors.insurance_provider = 'Insurance is required';
+        if (!formData.insurance_start_date) newErrors.insurance_start_date = 'Insurance start date is required';
+        if (!formData.insurance_end_date) newErrors.insurance_end_date = 'Insurance end date is required';
+
+        if (formData.insurance_start_date && formData.insurance_end_date) {
+            const requiredEndDate = getInsuranceEndDate(formData.insurance_start_date);
+            if (!requiredEndDate) {
+                newErrors.insurance_start_date = 'Insurance start date is not valid for a one-year period';
+            } else if (formData.insurance_end_date !== requiredEndDate) {
+                newErrors.insurance_end_date = `Insurance end date must be exactly ${requiredEndDate}`;
+            }
+        }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -226,8 +292,8 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
                                     name="year"
                                     value={formData.year}
                                     onChange={handleChange}
-                                    min="2000"
-                                    max="2030"
+                                    min="1950"
+                                    max={new Date().getFullYear()}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
                             </div>
@@ -262,6 +328,26 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
                                 />
                                 {errors.license_plate && (
                                     <p className="text-red-500 text-xs mt-1">{errors.license_plate}</p>
+                                )}
+                            </div>
+
+                            {/* Vehicle License */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Vehicle License <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    name="vehicle_license"
+                                    value={formData.vehicle_license}
+                                    onChange={handleChange}
+                                    placeholder="e.g., VH-2024-001"
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                        errors.vehicle_license ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {errors.vehicle_license && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.vehicle_license}</p>
                                 )}
                             </div>
 
@@ -383,6 +469,70 @@ const VehicleForm = ({ isOpen, onClose, onSubmit, vehicle, categories, loading }
                                     placeholder="e.g., 1500cc"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 />
+                            </div>
+
+                            {/* Insurance Provider */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Insurance <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    name="insurance_provider"
+                                    value={formData.insurance_provider}
+                                    onChange={handleChange}
+                                    placeholder="e.g., Sri Lanka Insurance"
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                        errors.insurance_provider ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {errors.insurance_provider && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.insurance_provider}</p>
+                                )}
+                            </div>
+
+                            {/* Insurance Dates */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Insurance Start Date <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="date"
+                                    name="insurance_start_date"
+                                    value={formData.insurance_start_date}
+                                    onChange={handleChange}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                        errors.insurance_start_date ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {errors.insurance_start_date && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.insurance_start_date}</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Insurance End Date <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="date"
+                                    name="insurance_end_date"
+                                    value={formData.insurance_end_date}
+                                    onChange={handleChange}
+                                    min={formData.insurance_start_date ? getInsuranceEndDate(formData.insurance_start_date) : undefined}
+                                    max={formData.insurance_start_date ? getInsuranceEndDate(formData.insurance_start_date) : undefined}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                        errors.insurance_end_date ? 'border-red-500' : 'border-gray-300'
+                                    }`}
+                                />
+                                {formData.insurance_start_date && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Insurance must end exactly 1 year later ({getInsuranceEndDate(formData.insurance_start_date)}).
+                                    </p>
+                                )}
+                                {errors.insurance_end_date && (
+                                    <p className="text-red-500 text-xs mt-1">{errors.insurance_end_date}</p>
+                                )}
                             </div>
                         </div>
 
