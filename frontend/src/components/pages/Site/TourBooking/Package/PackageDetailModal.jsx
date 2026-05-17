@@ -16,6 +16,7 @@ const TYPE_ICONS = {
 const PackageDetailModal = ({ pkg, onClose, onShowMore }) => {
   if (!pkg) return null;
   const [recommendations, setRecommendations] = useState(null);
+  const [showGuidDetails, setShowGuidDetails] = useState(false);
 
   const handleRecommendationShowMore = (recPkg) => {
     if (!onShowMore || !recPkg?.id) return;
@@ -52,6 +53,7 @@ const PackageDetailModal = ({ pkg, onClose, onShowMore }) => {
   }, [pkg?.id, pkg?.recommendations]);
   const destinations = Array.isArray(pkg.destinations) ? pkg.destinations : [];
   const highlights = Array.isArray(pkg.highlights) ? pkg.highlights : [];
+  const guide = pkg.guid || pkg.guide || null;
 
   return (
     <>
@@ -314,6 +316,59 @@ const PackageDetailModal = ({ pkg, onClose, onShowMore }) => {
           box-shadow: 0 18px 48px rgba(0,60,50,0.16);
           border-color: rgba(0,176,165,0.22);
         }
+        .pdm-guid-panel {
+          margin-top: 18px;
+          border: 1px solid rgba(0,176,165,0.12);
+          border-radius: 18px;
+          background: linear-gradient(180deg, rgba(247,255,254,0.92), rgba(255,255,255,0.98));
+          padding: 16px 18px;
+          box-shadow: 0 8px 28px rgba(0,60,50,0.05);
+        }
+        .pdm-guid-toggle {
+          display: flex; align-items: center; gap: 10px;
+          font-size: 13px; font-weight: 800; color: #0d2b2b;
+          letter-spacing: 0.02em;
+        }
+        .pdm-guid-toggle input {
+          width: 16px; height: 16px; accent-color: #00b0a5;
+          flex-shrink: 0;
+        }
+        .pdm-guid-note {
+          margin-top: 8px;
+          font-size: 12px;
+          color: #5a8080;
+        }
+        .pdm-guid-card {
+          margin-top: 14px;
+          display: grid;
+          gap: 12px;
+          border-radius: 16px;
+          padding: 14px;
+          background: #fff;
+          border: 1px solid rgba(0,176,165,0.12);
+        }
+        .pdm-guid-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        @media (max-width: 640px) {
+          .pdm-guid-grid { grid-template-columns: 1fr; }
+        }
+        .pdm-guid-field {
+          display: flex; flex-direction: column; gap: 4px;
+        }
+        .pdm-guid-label {
+          font-size: 9px; font-weight: 900;
+          letter-spacing: 0.18em; text-transform: uppercase;
+          color: #7a9a9a;
+        }
+        .pdm-guid-value {
+          font-size: 14px; font-weight: 600;
+          color: #0d2b2b;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
         @media (min-width: 900px) {
           .pdm-rec-shell { padding: 16px 18px; }
           .pdm-rec-row { gap: 18px; }
@@ -426,7 +481,43 @@ const PackageDetailModal = ({ pkg, onClose, onShowMore }) => {
                   ← Back to packages
                 </button>
               </div>
-              <br></br>
+
+              <div className="pdm-guid-panel">
+                <label className="pdm-guid-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showGuidDetails}
+                    onChange={e => setShowGuidDetails(e.target.checked)}
+                    disabled={!guide}
+                  />
+                  <span>See guide</span>
+                </label>
+                {!guide && <div className="pdm-guid-note">No guide is linked to this package.</div>}
+                {showGuidDetails && guide && (
+                  <motion.div
+                    className="pdm-guid-card"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div className="pdm-guid-grid">
+                      <div className="pdm-guid-field">
+                        <span className="pdm-guid-label">Guide Name</span>
+                        <span className="pdm-guid-value">{guide.name}</span>
+                      </div>
+                      <div className="pdm-guid-field">
+                        <span className="pdm-guid-label">NIC</span>
+                        <span className="pdm-guid-value">{guide.nic}</span>
+                      </div>
+                    </div>
+                    <div className="pdm-guid-field">
+                      <span className="pdm-guid-label">Contact Details</span>
+                      <span className="pdm-guid-value">{guide.contactDetails}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
               {/* Recommendations */}
               {recommendations && (
                 <>

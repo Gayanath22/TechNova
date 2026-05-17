@@ -32,6 +32,7 @@ const toPackageTypeLabel = (value) => {
 };
 
 let packageSchemaCache = null;
+let guidSchemaCache = null;
 const PACKAGE_TYPE_META_PREFIX = '[[PKG_TYPE:';
 
 cloudinary.config({
@@ -55,9 +56,35 @@ const getPackageSchemaMeta = async () => {
     daysType: byName.days ? String(byName.days.Type || '').toLowerCase() : '',
     hasImageUrl: Boolean(byName.image_url),
     hasDescription: Boolean(byName.description),
+    hasGuidId: Boolean(byName.guid_id),
   };
 
   return packageSchemaCache;
+};
+
+const getGuidSchemaMeta = async () => {
+  if (guidSchemaCache) return guidSchemaCache;
+
+  const [tables] = await db.execute("SHOW TABLES LIKE 'guid'");
+  if (!tables.length) {
+    guidSchemaCache = { hasTable: false };
+    return guidSchemaCache;
+  }
+
+  const [columns] = await db.execute('SHOW COLUMNS FROM `guid`');
+  const byName = columns.reduce((acc, col) => {
+    acc[col.Field] = col;
+    return acc;
+  }, {});
+
+  guidSchemaCache = {
+    hasTable: true,
+    hasGuidName: Boolean(byName.guid_name),
+    hasNic: Boolean(byName.nic),
+    hasContactDetails: Boolean(byName.contact_details),
+  };
+
+  return guidSchemaCache;
 };
 
 const encodeDescriptionWithTypeMeta = (description, typeLabel) => {
@@ -99,6 +126,67 @@ const toPackageDaysNumber = (value) => {
   if (value == null) return null;
   const match = String(value).match(/(\d+)/);
   return match ? Number(match[1]) : Number(value) || null;
+};
+
+const toBoolean = (value) => {
+  if (value == null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'on' || normalized === 'yes';
+};
+
+const normalizeGuidInput = (body = {}) => ({
+  withGuid: toBoolean(body.withGuid),
+  guideName: String(body.guideName || '').trim(),
+  guideNic: String(body.guideNic || '').trim(),
+  guideContactDetails: String(body.guideContactDetails || '').trim(),
+});
+
+const guidRowToPayload = (row) => {
+  if (!row || !row.guid_id) return null;
+  return {
+    id: row.guid_id,
+    name: row.guid_name,
+    nic: row.nic,
+    contactDetails: row.contact_details,
+  };
+};
+
+const upsertPackageGuid = async (conn, packageId, existingGuidId, guidInput) => {
+  const packageMeta = await getPackageSchemaMeta();
+  const guidMeta = await getGuidSchemaMeta();
+  if (!packageMeta.hasGuidId || !guidMeta.hasTable) return existingGuidId || null;
+
+  if (!guidInput.withGuid) {
+    if (existingGuidId) {
+      await conn.execute('DELETE FROM `guid` WHERE guid_id = ?', [existingGuidId]);
+      if (packageId != null) {
+        await conn.execute('UPDATE package SET guid_id = NULL WHERE package_id = ?', [packageId]);
+      }
+    }
+    return null;
+  }
+
+  if (!guidInput.guideName || !guidInput.guideNic || !guidInput.guideContactDetails) {
+    throw new Error('Guide name, NIC and contact details are required when With Guide is checked.');
+  }
+
+  if (existingGuidId) {
+    await conn.execute(
+      'UPDATE `guid` SET guid_name = ?, nic = ?, contact_details = ? WHERE guid_id = ?',
+      [guidInput.guideName, guidInput.guideNic, guidInput.guideContactDetails, existingGuidId]
+    );
+    return existingGuidId;
+  }
+
+  const [guidResult] = await conn.execute(
+    'INSERT INTO `guid` (guid_name, nic, contact_details) VALUES (?, ?, ?)',
+    [guidInput.guideName, guidInput.guideNic, guidInput.guideContactDetails]
+  );
+  const guidId = guidResult.insertId;
+  if (packageId != null) {
+    await conn.execute('UPDATE package SET guid_id = ? WHERE package_id = ?', [guidId, packageId]);
+  }
+  return guidId;
 };
 
 const uploadBufferToCloudinary = (file, folder) => new Promise((resolve) => {
@@ -158,6 +246,7 @@ exports.createPackage = async (req, res) => {
   */
   try {
     const { title, type, days, description } = req.body;
+    const guidInput = normalizeGuidInput(req.body);
     if (!title || !type || !days) {
       return res.status(400).json({ error: 'title, type and days are required.' });
     }
@@ -235,6 +324,7 @@ exports.createPackage = async (req, res) => {
       console.debug('INSERT values:', insertValues);
       const [pkgResult] = await conn.execute(insertPkgSql, insertValues);
       const packageId = pkgResult.insertId;
+      const guidId = await upsertPackageGuid(conn, packageId, null, guidInput);
 
       for (let i = 0; i < destinations.length; i++) {
         const dest = destinations[i] || {};
@@ -266,6 +356,12 @@ exports.createPackage = async (req, res) => {
         days: toPackageDaysNumber(packageDaysLabel),
         description: description || null,
         image_url: packageImage,
+        guid: guidId ? {
+          id: guidId,
+          name: guidInput.guideName,
+          nic: guidInput.guideNic,
+          contactDetails: guidInput.guideContactDetails,
+        } : null,
       });
     } catch (err) {
       await conn.rollback();
@@ -282,6 +378,12 @@ exports.createPackage = async (req, res) => {
 exports.listAdminPackages = async (req, res) => {
   try {
     const schemaMeta = await getPackageSchemaMeta();
+    const guidMeta = await getGuidSchemaMeta();
+    const canJoinGuid = schemaMeta.hasGuidId && guidMeta.hasTable;
+    const guidSelect = canJoinGuid
+      ? ', p.guid_id, g.guid_name, g.nic, g.contact_details'
+      : ', NULL AS guid_id, NULL AS guid_name, NULL AS nic, NULL AS contact_details';
+    const guidJoin = canJoinGuid ? 'LEFT JOIN `guid` g ON g.guid_id = p.guid_id' : '';
     const [packages] = await db.execute(`
       SELECT
         p.package_id,
@@ -290,7 +392,9 @@ exports.listAdminPackages = async (req, res) => {
         ${schemaMeta.hasDays ? 'p.days' : 'NULL AS days'},
         ${schemaMeta.hasDescription ? 'p.description' : 'NULL AS description'},
         ${schemaMeta.hasImageUrl ? 'p.image_url' : 'NULL AS image_url'}
+        ${guidSelect}
       FROM package p
+      ${guidJoin}
       ORDER BY p.package_id DESC
     `);
 
@@ -340,6 +444,7 @@ exports.listAdminPackages = async (req, res) => {
       days: toPackageDaysNumber(r.days),
       description: decoded.description,
       image_url: r.image_url,
+      guid: guidRowToPayload(r),
       destinations: destinationsByPackage[r.package_id] || [],
       places_count: (destinationsByPackage[r.package_id] || []).length,
       hidden_dest_count: hidden,
@@ -354,6 +459,12 @@ exports.listAdminPackages = async (req, res) => {
 exports.listPublicPackages = async (req, res) => {
   try {
     const schemaMeta = await getPackageSchemaMeta();
+    const guidMeta = await getGuidSchemaMeta();
+    const canJoinGuid = schemaMeta.hasGuidId && guidMeta.hasTable;
+    const guidSelect = canJoinGuid
+      ? ', p.guid_id, g.guid_name, g.nic, g.contact_details'
+      : ', NULL AS guid_id, NULL AS guid_name, NULL AS nic, NULL AS contact_details';
+    const guidJoin = canJoinGuid ? 'LEFT JOIN `guid` g ON g.guid_id = p.guid_id' : '';
     const qType = req.query.type || null;
     const qDays = req.query.days || null;
 
@@ -394,7 +505,9 @@ exports.listPublicPackages = async (req, res) => {
         ${schemaMeta.hasDays ? 'p.days' : 'NULL AS days'},
         ${schemaMeta.hasDescription ? 'p.description' : 'NULL AS description'},
         ${schemaMeta.hasImageUrl ? 'p.image_url' : 'NULL AS image_url'}
+        ${guidSelect}
       FROM package p
+      ${guidJoin}
       ${whereSql}
       ORDER BY p.package_id DESC
     `, params);
@@ -447,6 +560,7 @@ exports.listPublicPackages = async (req, res) => {
       days: toPackageDaysNumber(p.days),
       description: decoded.description,
       image: p.image_url,
+      guid: guidRowToPayload(p),
       highlights: [],
       destinations: placesByPkg[p.package_id] || [],
       hidden_dest_count: hidden,
@@ -463,16 +577,24 @@ exports.getPackageDetail = async (req, res) => {
   const { id } = req.params;
   try {
     const schemaMeta = await getPackageSchemaMeta();
+    const guidMeta = await getGuidSchemaMeta();
+    const canJoinGuid = schemaMeta.hasGuidId && guidMeta.hasTable;
+    const guidSelect = canJoinGuid
+      ? ', p.guid_id, g.guid_name, g.nic, g.contact_details'
+      : ', NULL AS guid_id, NULL AS guid_name, NULL AS nic, NULL AS contact_details';
+    const guidJoin = canJoinGuid ? 'LEFT JOIN `guid` g ON g.guid_id = p.guid_id' : '';
     const [[pkgRow]] = await db.execute(`
       SELECT
-        package_id,
-        title,
-        ${schemaMeta.hasType ? 'type' : 'NULL AS type'},
-        ${schemaMeta.hasDays ? 'days' : 'NULL AS days'},
-        ${schemaMeta.hasDescription ? 'description' : 'NULL AS description'},
-        ${schemaMeta.hasImageUrl ? 'image_url' : 'NULL AS image_url'}
-      FROM package
-      WHERE package_id = ?
+        p.package_id,
+        p.title,
+        ${schemaMeta.hasType ? 'p.type' : 'NULL AS type'},
+        ${schemaMeta.hasDays ? 'p.days' : 'NULL AS days'},
+        ${schemaMeta.hasDescription ? 'p.description' : 'NULL AS description'},
+        ${schemaMeta.hasImageUrl ? 'p.image_url' : 'NULL AS image_url'}
+        ${guidSelect}
+      FROM package p
+      ${guidJoin}
+      WHERE p.package_id = ?
     `, [id]);
     if (!pkgRow) return res.status(404).json({ error: 'Package not found.' });
 
@@ -520,6 +642,7 @@ exports.getPackageDetail = async (req, res) => {
       description: decoded.description,
       image: pkgRow.image_url,
       destinations: detailedPlaces,
+      guid: guidRowToPayload(pkgRow),
     });
   } catch (error) {
     console.error('getPackageDetail failed:', error);
@@ -595,8 +718,10 @@ exports.updatePackage = async (req, res) => {
   const { id } = req.params;
   try {
     const schemaMeta = await getPackageSchemaMeta();
+    const guidMeta = await getGuidSchemaMeta();
 
     const { title, type, days, description } = req.body;
+    const guidInput = normalizeGuidInput(req.body);
     const packageType = type ? toPackageTypeEnum(type) : null;
 
     const packageImageFile = req.files && req.files.packageImage && req.files.packageImage[0];
@@ -616,7 +741,12 @@ exports.updatePackage = async (req, res) => {
       await conn.beginTransaction();
 
       // ensure package exists
-      const [[existing]] = await conn.execute(`SELECT package_id, image_url FROM package WHERE package_id = ?`, [id]);
+      const [[existing]] = await conn.execute(
+        schemaMeta.hasGuidId
+          ? 'SELECT package_id, image_url, guid_id FROM package WHERE package_id = ?'
+          : 'SELECT package_id, image_url FROM package WHERE package_id = ?',
+        [id]
+      );
       if (!existing) {
         await conn.rollback();
         return res.status(404).json({ error: 'Package not found.' });
@@ -640,6 +770,33 @@ exports.updatePackage = async (req, res) => {
       // image handling: if a new image was uploaded, use it; otherwise keep existing
       if (schemaMeta.hasImageUrl && packageImage) {
         updateCols.push('image_url = ?'); updateVals.push(packageImage);
+      }
+
+      if (schemaMeta.hasGuidId && guidMeta.hasTable) {
+        if (!guidInput.withGuid && existing.guid_id) {
+          await conn.execute('DELETE FROM `guid` WHERE guid_id = ?', [existing.guid_id]);
+          updateCols.push('guid_id = ?');
+          updateVals.push(null);
+        } else if (guidInput.withGuid) {
+          if (!guidInput.guideName || !guidInput.guideNic || !guidInput.guideContactDetails) {
+            await conn.rollback();
+            return res.status(400).json({ error: 'Guide name, NIC and contact details are required when With Guide is checked.' });
+          }
+
+          if (existing.guid_id) {
+            await conn.execute(
+              'UPDATE `guid` SET guid_name = ?, nic = ?, contact_details = ? WHERE guid_id = ?',
+              [guidInput.guideName, guidInput.guideNic, guidInput.guideContactDetails, existing.guid_id]
+            );
+          } else {
+            const [guidResult] = await conn.execute(
+              'INSERT INTO `guid` (guid_name, nic, contact_details) VALUES (?, ?, ?)',
+              [guidInput.guideName, guidInput.guideNic, guidInput.guideContactDetails]
+            );
+            updateCols.push('guid_id = ?');
+            updateVals.push(guidResult.insertId);
+          }
+        }
       }
 
       if (updateCols.length > 0) {
@@ -702,11 +859,15 @@ exports.updatePackage = async (req, res) => {
 exports.deletePackage = async (req, res) => {
   const { id } = req.params;
   try {
+    const packageMeta = await getPackageSchemaMeta();
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
 
-      const [[existing]] = await conn.execute(`SELECT package_id FROM package WHERE package_id = ?`, [id]);
+      const deleteLookupSql = packageMeta.hasGuidId
+        ? 'SELECT package_id, guid_id FROM package WHERE package_id = ?'
+        : 'SELECT package_id FROM package WHERE package_id = ?';
+      const [[existing]] = await conn.execute(deleteLookupSql, [id]);
       if (!existing) {
         await conn.rollback();
         return res.status(404).json({ error: 'Package not found.' });
@@ -727,6 +888,10 @@ exports.deletePackage = async (req, res) => {
       }
 
       await conn.execute(`DELETE FROM package WHERE package_id = ?`, [id]);
+
+      if (existing.guid_id) {
+        await conn.execute('DELETE FROM `guid` WHERE guid_id = ?', [existing.guid_id]);
+      }
 
       await conn.commit();
       res.json({ success: true });
