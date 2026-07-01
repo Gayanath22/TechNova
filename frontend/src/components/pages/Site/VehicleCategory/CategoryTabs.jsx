@@ -61,7 +61,20 @@ const CategoryTabs = ({ categories, selectedCategory, onCategorySelect, loading 
                 {categories.map((category) => {
                     const isSelected = selectedCategory?.id === category.id;
                     const icon = categoryIcons[category.name] || '🚗';
-                    const hasImage = Boolean(category.image_url);
+                    
+                    let firstImage = null;
+                    if (Array.isArray(category.images) && category.images.length > 0) {
+                        firstImage = category.images[0];
+                    } else if (category.image_url) {
+                        try {
+                            const parsed = JSON.parse(category.image_url);
+                            if (Array.isArray(parsed) && parsed.length > 0) firstImage = parsed[0];
+                            else firstImage = category.image_url;
+                        } catch {
+                            firstImage = category.image_url;
+                        }
+                    }
+                    const hasImage = Boolean(firstImage);
 
                     return (
                         <button
@@ -79,7 +92,7 @@ const CategoryTabs = ({ categories, selectedCategory, onCategorySelect, loading 
                                 <div className="mb-2 h-16 w-16 overflow-hidden rounded-xl border border-white/30 bg-white/20 shadow-sm flex items-center justify-center">
                                     {hasImage ? (
                                         <img
-                                            src={category.image_url}
+                                            src={firstImage}
                                             alt={category.name}
                                             className="h-full w-full object-cover"
                                         />
