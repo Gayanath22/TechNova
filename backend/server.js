@@ -10,8 +10,7 @@ const otpRoutes     = require('./routes/otpRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const reportRoutes  = require('./routes/reportRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
-
-
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const packageRoutes = require('./routes/packageRoutes');
 
@@ -56,6 +55,7 @@ app.use('/api/gallery',  galleryRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/reviews',  reviewRoutes);
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/payments', paymentRoutes);
  
 // ── Global error handler ──────────────────────────────────────────────────────
 

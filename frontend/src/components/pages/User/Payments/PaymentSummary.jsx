@@ -5,7 +5,15 @@ const statusConfig = {
     label: "PENDING PAYMENT",
     className: "bg-yellow-100 text-yellow-700 border border-yellow-200",
   },
+  "PARTIALLY PAID": {
+    label: "PARTIALLY PAID",
+    className: "bg-blue-100 text-blue-700 border border-blue-200",
+  },
   PAID: {
+    label: "PAID",
+    className: "bg-green-100 text-green-700 border border-green-200",
+  },
+  "FULLY PAID": {
     label: "PAID",
     className: "bg-green-100 text-green-700 border border-green-200",
   },

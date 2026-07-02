@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const STATUS_CONFIG = {
   pending: { label: "PENDING VERIFICATION", className: "bg-amber-100 text-amber-700 border border-amber-300" },
@@ -30,6 +31,25 @@ function InfoRow({ label, value, highlight, linkLabel, onLink }) {
 
 function SlipPreview({ slip }) {
   if (!slip) return null;
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(slip.previewUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = slip.filename || 'payment-slip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download file directly:", err);
+      window.open(slip.previewUrl, '_blank');
+    }
+  };
+
   return (
     <div className="mt-2 border border-gray-200 rounded-xl overflow-hidden">
       <div className="bg-gray-50 h-28 flex items-center justify-center border-b border-gray-100">
@@ -56,8 +76,8 @@ function SlipPreview({ slip }) {
           <p className="text-xs text-gray-400">Uploaded on {slip.uploadedAt}</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">View Full Size</button>
-          <button className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-teal-50 border border-teal-200 rounded-lg text-teal-700 hover:bg-teal-100 transition-colors">Download</button>
+          <button onClick={() => window.open(slip.previewUrl, '_blank')} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">View Full Size</button>
+          <button onClick={handleDownload} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs bg-teal-50 border border-teal-200 rounded-lg text-teal-700 hover:bg-teal-100 transition-colors">Download</button>
         </div>
       </div>
     </div>
@@ -66,6 +86,7 @@ function SlipPreview({ slip }) {
 
 export default function PaymentDetailPanel({ payment = null, onClose = () => {}, onApprove = () => {}, onReject = () => {}, loading = false }) {
   const [notes, setNotes] = useState("");
+  const navigate = useNavigate();
 
   if (!payment) return null;
 
@@ -98,7 +119,7 @@ export default function PaymentDetailPanel({ payment = null, onClose = () => {},
           <div className="border-t border-gray-100 pt-4">
             <SectionHeader title="Booking Information" />
             <div className="bg-gray-50/60 rounded-xl p-3">
-              <InfoRow label="Booking ID" value={payment.bookingId} linkLabel="View Booking" onLink={() => {}} />
+              <InfoRow label="Booking ID" value={payment.bookingId} linkLabel="View Booking" onLink={() => navigate('/admin/approve-bookings', { state: { bookingId: payment.bookingId } })} />
               <InfoRow label="Tour Type" value={payment.tourType} />
               <InfoRow label="Route" value={payment.route} />
               <InfoRow label="Tour Dates" value={payment.tourDates} />

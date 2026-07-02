@@ -22,7 +22,7 @@ const PaymentHistory = ({ transactions = [], onViewSlip }) => {
         <table className="w-full">
           <thead>
             <tr>
-              {["Date", "Type", "Amount", "Method", "Status", "Reference", "Actions"].map(
+              {["Tour ID", "Date", "Type", "Amount", "Method", "Status", "Actions"].map(
                 (col) => (
                   <th
                     key={col}
@@ -40,6 +40,9 @@ const PaymentHistory = ({ transactions = [], onViewSlip }) => {
                 key={tx.id}
                 className="border-t border-gray-50 hover:bg-gray-50 transition-colors"
               >
+                <td className="py-3 pr-4 text-sm text-gray-500 font-mono">
+                  {tx.tourId}
+                </td>
                 <td className="py-3 pr-4 text-sm text-gray-700 whitespace-nowrap">
                   {tx.date}
                 </td>
@@ -56,9 +59,6 @@ const PaymentHistory = ({ transactions = [], onViewSlip }) => {
                   >
                     {tx.status}
                   </span>
-                </td>
-                <td className="py-3 pr-4 text-sm text-gray-500 font-mono">
-                  {tx.reference}
                 </td>
                 <td className="py-3 text-right">
                   <button
